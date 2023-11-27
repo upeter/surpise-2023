@@ -1,6 +1,8 @@
 #include <Arduino.h>
 #include <WS2812B.h>
 #include <ledUtils.h>
+#include "buttonUtils.cpp"
+#include <vector>
 
 #define NUM_LEDS 16
 
@@ -9,12 +11,41 @@
 #define 	IR_SENSOR PA9
 #define 	LED_1 PA0
 #define 	LED_2 PA1
+#define 	BUTTON_BOARD PA4
 
 /*
  * Note. Library uses SPI1
  * Connect the WS2812B data input to MOSI on your board.
  */
 WS2812B strip = WS2812B(NUM_LEDS);
+
+uint8_t LEDGamma[] = {
+    0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,
+    0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  0,  1,  1,  1,  1,
+    1,  1,  1,  1,  1,  1,  1,  1,  1,  2,  2,  2,  2,  2,  2,  2,
+    2,  3,  3,  3,  3,  3,  3,  3,  4,  4,  4,  4,  4,  5,  5,  5,
+    5,  6,  6,  6,  6,  7,  7,  7,  7,  8,  8,  8,  9,  9,  9, 10,
+   10, 10, 11, 11, 11, 12, 12, 13, 13, 13, 14, 14, 15, 15, 16, 16,
+   17, 17, 18, 18, 19, 19, 20, 20, 21, 21, 22, 22, 23, 24, 24, 25,
+   25, 26, 27, 27, 28, 29, 29, 30, 31, 32, 32, 33, 34, 35, 35, 36,
+   37, 38, 39, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 50,
+   51, 52, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 66, 67, 68,
+   69, 70, 72, 73, 74, 75, 77, 78, 79, 81, 82, 83, 85, 86, 87, 89,
+   90, 92, 93, 95, 96, 98, 99,101,102,104,105,107,109,110,112,114,
+  115,117,119,120,122,124,126,127,129,131,133,135,137,138,140,142,
+  144,146,148,150,152,154,156,158,160,162,164,167,169,171,173,175,
+  177,180,182,184,186,189,191,193,196,198,200,203,205,208,210,213,
+215,218,220,223,225,228,231,233,236,239,241,244,247,249,252,255 };
+uint32_t redColor = strip.Color(255, 0, 0); // Red
+  uint32_t greenColor = strip.Color(0, 255, 0); // Green
+  uint32_t blueColor = strip.Color(0, 0, 255); // Blue
+  uint32_t yellowcolor = strip.Color(255, 255, 0); // Yellow
+  uint32_t whitecolor = strip.Color(255, 255, 255); // White
+
+struct ColorCode {
+    uint32_t color;
+    int count;
+};
 
 
 
@@ -40,11 +71,104 @@ public:
     triggered_ = false;
   }
 
+	unsigned long getMillisStarted() {
+		return startMillis_;
+	}
+
 private:
-  unsigned long delayMillis_;
   unsigned long startMillis_;
+  unsigned long delayMillis_;
   bool triggered_;
 };
+
+
+class CodeReveal {
+public:
+  CodeReveal(WS2812B & strip,std::vector<ColorCode> & colorCodes, long colorPeriodMillis, uint8_t wait) : strip_(strip), colorCodes_(colorCodes), nbDelay_(wait), colorPeriodMillis_(colorPeriodMillis), colorStartedMillis_(0), fadeMax_(100.0), fadeVal_(0), loops_(256), loopCount_(0), loopCountUp_(true) {
+    // Additional setup for your function
+  }
+  ColorCode getNextCode() {
+	if (currentIndex_ == colorCodes_.size()) {
+		currentIndex_ = 0;
+	}
+   	return colorCodes_[currentIndex_++];
+	};
+
+  void next() {
+    // Additional logic before starting the non-blocking delay
+    nbDelay_.restart();
+	currentCode_ = getNextCode();
+	colorStartedMillis_ = millis();
+	strip_.clear();
+	loopCount_ = 0;
+  }
+
+  void update() {
+	
+    if (nbDelay_.update()) {
+		//white different
+		if(currentCode_.color == whitecolor) {
+			for (int i = 0; i < strip_.numPixels(); i++) {
+				strip_.setPixelColor(i, strip.Color(LEDGamma[loopCount_],LEDGamma[loopCount_],LEDGamma[loopCount_]));
+			
+			}
+		} else {
+		
+		if(millis() - colorStartedMillis_ <= colorPeriodMillis_) {
+			//all
+			for (int i = 0; i < strip_.numPixels(); i++) {
+				strip_.setPixelColor(i, currentCode_.color);
+			}
+		} else {
+			//count
+			for (int i = 0; i < strip_.numPixels(); i++) {
+				uint32_t color = i < currentCode_.count ? currentCode_.color :	0;
+				strip_.setPixelColor(i,color);
+			}
+        }
+		}
+
+		strip_.show();
+		if (loopCount_ >= 255)
+		{
+			loopCountUp_ = false;
+		}
+		else if (loopCount_ <= 5)
+		{
+			loopCountUp_ = true;
+		}
+		if(loopCountUp_) {
+			loopCount_++;
+		} else {
+			loopCount_--;
+		}
+       
+		nbDelay_.restart();
+    }
+  }
+
+  void stop() {
+	 strip_.clear();
+	 strip_.show();
+  }
+
+private:
+  WS2812B strip_;
+  std::vector<ColorCode> & colorCodes_;
+  NonBlockingDelay nbDelay_;
+  size_t currentIndex_ = 0;
+  ColorCode currentCode_;
+  long colorPeriodMillis_;
+  long colorStartedMillis_;
+  float fadeMax_;
+  int fadeVal_;
+  int loops_;
+  int loopCount_;
+  boolean loopCountUp_;
+  
+};
+
+
 
 
 class RainbowCycle {
@@ -129,6 +253,7 @@ private:
   
 };
 
+
 class Eyes {
 	public:
 	void start() {
@@ -144,26 +269,31 @@ class Eyes {
 
 class CoinEffects {
 	public:
-  		CoinEffects(long durationMillis, RainbowCycle & ring, Eyes eyes) : durationMillis_(durationMillis), ring_(ring), eyes_(eyes), startMillis_(0), triggered_(false) {
+  		CoinEffects(long durationMillis, RainbowCycle & ring, Eyes & eyes, CodeReveal & code) : durationMillis_(durationMillis), ring_(ring), eyes_(eyes), code_(code), startMillis_(0), triggered_(false) {
 
 		}
 
 		void start() {
-			startMillis_ = millis();
-			triggered_ = true;
-			eyes_.start();
-			ring_.start();
+			if(!triggered_) {
+				startMillis_ = millis();
+				triggered_ = true;
+				eyes_.start();
+				//ring_.start();
+				code_.next();
+			}
 
 		};
 
 		void update() {
 		unsigned long currentMillis = millis();
 			if (currentMillis - startMillis_ <= durationMillis_ && triggered_) {
-				ring_.update();
+				//ring_.update();
+				code_.update();
 			} else if(triggered_) {
 				triggered_ = false;
-				ring_.stop();
+				//ring_.stop();
 				eyes_.stop();
+				code_.stop();
 			}
  };
 
@@ -172,17 +302,189 @@ private:
 	unsigned long durationMillis_;
 	RainbowCycle ring_;
 	Eyes eyes_;
+	CodeReveal code_;
 	unsigned long startMillis_;
 	boolean triggered_;
 
 
 };
 
+class Unlocker{
+
+	public:
+  		Unlocker(std::vector<ColorCode> & colorCodes, WS2812B & strip):colorCodes_(colorCodes), strip_(strip), unlocked_(false) {
+			initRequirdColorCode();
+			resetCounts();
+		}
+
+		void initRequirdColorCode() {
+			for (int i = 0; i < colorCodes_.size(); i++) {
+				ColorCode code =  colorCodes_[i];
+				if(code.color != whitecolor) {
+					for (int j = 0; j < code.count; j++) {
+						requiredColorCodes_.push_back(code.color);
+					}
+				}
+			}
+		}
+
+		void resetCounts() {
+			chosenColorCodes_.clear();
+		}
+
+		boolean checkUnlock() {
+			Serial.println("Chosen Size: " + (String)chosenColorCodes_.size() + " Required Size: " + (String)requiredColorCodes_.size());
+
+			if(chosenColorCodes_.size() != requiredColorCodes_.size()) {
+				return false;
+			} else {
+				for (int i = 0; i < chosenColorCodes_.size(); i++) {
+					Serial.println("Chosen: " + (String)chosenColorCodes_[i] + " Required: " + (String)requiredColorCodes_[i]);
+				}
+
+				for (int i = 0; i < chosenColorCodes_.size(); i++) {
+					if(chosenColorCodes_[i] != requiredColorCodes_[i]) {
+						return  false;
+					}
+				}
+			}
+			return true;
+
+			// int chosenColor, requiredColor; 
+			// for (const auto &colorCode : colorCodes_) {
+			// 	uint32_t color = colorCode.color;
+			// 	if (color == redColor) {
+			// 		redCount = colorCode.count;
+			// 	} else if (color == greenColor) {
+			// 		greenCount = colorCode.count;
+			// 	} else if (color == blueColor) {
+			// 		blueCount = colorCode.count;
+			// 	} else if (color == yellowcolor) {
+			// 		yellowCount = colorCode.count;
+			// 	}
+			// }
+			// Serial.println("Code Red:    " + (String)redCount_ + " Entry: " + (String)redCount);
+			// Serial.println("Code Blue:   " + (String)blueCount_ + " Entry: " + (String)blueCount);
+			// Serial.println("Code Green:  " + (String)greenCount_ + " Entry: " + (String)greenCount);
+			// Serial.println("Code Yellow: " + (String)yellowCount_ + " Entry: " + (String)yellowCount);
+			// return redCount_ == redCount && blueCount_ == blueCount && greenCount_ == greenCount && yellowCount_ && yellowCount;
+		}
+
+		void updateCount(Key k) {
+			strip_.clear();
+			int color = 0;
+			if(k == up) {
+				color = redColor;
+			} else if(k == down) {
+				color = greenColor;
+			} else if(k == left) {
+				color = blueColor;
+			} else if(k == right) {
+				color = yellowcolor;
+			} 
+			if(color != 0 && chosenColorCodes_.size() <= strip_.numPixels()) {
+				chosenColorCodes_.push_back(color);
+				showChosenColorCode();
+			}
+
+			if(k == enter) {
+ 				//clear all colors
+				clearColors();
+
+				//if it was unlocked, lock it
+				if(unlocked_) {
+					unlocked_ = false;
+					clearColors();
+				} else {
+					unlocked_ = checkUnlock();
+					Serial.println("Unlock is: " + (String)unlocked_);
+					if(!unlocked_) {
+						showWrongCode();
+					} 
+					resetCounts();
+				}
+
+			}
+		} 
+
+		void showChosenColorCode() {
+			for (int i = 0; i < chosenColorCodes_.size(); i++) {
+					strip_.setPixelColor(i+1, chosenColorCodes_[i]);
+				}				
+				strip_.show();
+		}
+
+		void clearColors() {
+				for(uint16_t i=0; i<strip_.numPixels(); i++) {
+        			strip_.setPixelColor(i, 0);
+				}
+				strip_.show();
+		}
+
+		void showWrongCode() {
+				for(uint16_t j=0; j<5; j++) {
+					for(uint16_t i=0; i<strip_.numPixels(); i++) {
+						strip_.setPixelColor(i, redColor);
+					}
+				strip_.show();
+				delay(400);
+				clearColors();
+				delay(400);
+			}
+		}
+
+		// void showSuccessCode() {
+		// 		uint16_t i, j;
+
+		// 		while(unlocked_){ 
+		// 			for(i=0; i< strip_.numPixels(); i++) {
+		// 				strip_.setPixelColor(i, Wheel(strip_, ((i * 256 / strip.numPixels()) + j) & 255));
+		// 			}
+		// 			strip_.show();
+		// 			delay(20);
+		// 		}
+		// 	}
+
+		
+
+		void showRainbow() {
+
+		}
 
 
+		boolean unlocked() {
+			return unlocked_;
+		};
+			private:	 
+				std::vector<ColorCode> colorCodes_;
+				WS2812B strip_;
+				std::vector<int> requiredColorCodes_ = {};
+				std::vector<int> chosenColorCodes_ = {};
+				int redCount_;
+				int greenCount_;
+				int blueCount_;
+				int yellowCount_;
+				boolean unlocked_;
+
+
+};
+
+std::vector<ColorCode> colorCodes = {
+    {whitecolor, 16},
+	{redColor, 1},
+    {greenColor, 2},
+    {blueColor, 2},
+	{yellowcolor, 3},
+	{whitecolor, 16}
+};
+CodeReveal codeReveal(strip, colorCodes, 3000, 10);
 RainbowCycle rainbowCycle(strip, 5);
 Eyes eyes;
-CoinEffects effects(5000, rainbowCycle, eyes);
+CoinEffects effects(5000, rainbowCycle, eyes, codeReveal);
+Unlocker unlocker(colorCodes, strip);
+ButtonBoard board = ButtonBoard(BUTTON_BOARD, [](Key k) -> void {  unlocker.updateCount(k);});
+
+
 
 const unsigned long debounceDelay = 500;  // Adjust the debounce delay as needed
 volatile unsigned long lastDebounceTime = 0;
@@ -208,37 +510,7 @@ void setup()
      //digitalWrite(LED_1, HIGH);   // turn the LED on (HIGH is the voltage level)
     
 }
-void rainbowCycle_(uint8_t wait) 
-{
-  uint16_t i, j;
 
-  for(j=0; j<256*5; j++) 
-  { // 5 cycles of all colors on wheel
-    for(i=0; i< strip.numPixels(); i++) 
-  {
-      strip.setPixelColor(i, Wheel(strip,((i * 256 / strip.numPixels()) + j) & 255));
-    }
-    strip.show();
-    delay(wait);
-  }
-}
-
-void theaterChase(uint32_t c, uint8_t wait) {
-  for (int j=0; j<10; j++) {  //do 10 cycles of chasing
-    for (int q=0; q < 3; q++) {
-      for (uint16_t i=0; i < strip.numPixels(); i=i+3) {
-        strip.setPixelColor(i+q, c);    //turn every third pixel on
-      }
-      strip.show();
-
-      delay(wait);
-
-      for (uint16_t i=0; i < strip.numPixels(); i=i+3) {
-        strip.setPixelColor(i+q, 0);        //turn every third pixel off
-      }
-    }
-  }
-}
 
 
 void loop()
@@ -266,7 +538,10 @@ void loop()
 	// 		lastDebounceTime = millis();
 	// }
 	
-	
+	board.update();
+	if(unlocker.unlocked()) {
+		rainbowCycle.update();
+	} else {
 	effects.update();
 
   int sensorStatus = digitalRead(IR_SENSOR); // Set the GPIO as Input
@@ -274,20 +549,20 @@ void loop()
   {
     // if the pin is high turn off the onboard Led
     digitalWrite(LED_BUILTIN, LOW); // LED LOW
-    Serial.print((String)millis()); 
-	Serial.println("Motion Detected!"); // print Motion Detected! on the serial monitor window
+    //Serial.print((String)millis()); 
+	//Serial.println("Motion Detected!"); // print Motion Detected! on the serial monitor window
 	effects.start();
 	motionDetected = true;
   }
   else  if(motionDetected && millis() - lastDebounceTime > debounceDelay) { 
     //else turn on the onboard LED
     digitalWrite(LED_BUILTIN, HIGH); // LED High
-    Serial.print((String)millis()); 
-	Serial.println(" Motion Ended!"); 
+    //Serial.print((String)millis()); 
+	//Serial.println(" Motion Ended!"); 
 	lastDebounceTime = millis();
 	motionDetected = false;
   }
-
+	}
 
 
   // colorWipe(strip.Color(0, 255, 0), 20); // Green

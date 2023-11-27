@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <WS2812B.h>
+#include <Servo.h>
 #include <ledUtils.h>
 #include "buttonUtils.cpp"
 #include <vector>
@@ -12,6 +13,8 @@
 #define 	LED_1 PA0
 #define 	LED_2 PA1
 #define 	BUTTON_BOARD PA4
+#define 	SERVO PA3
+#define 	BUZZER PB11
 
 /*
  * Note. Library uses SPI1
@@ -349,25 +352,6 @@ class Unlocker{
 				}
 			}
 			return true;
-
-			// int chosenColor, requiredColor; 
-			// for (const auto &colorCode : colorCodes_) {
-			// 	uint32_t color = colorCode.color;
-			// 	if (color == redColor) {
-			// 		redCount = colorCode.count;
-			// 	} else if (color == greenColor) {
-			// 		greenCount = colorCode.count;
-			// 	} else if (color == blueColor) {
-			// 		blueCount = colorCode.count;
-			// 	} else if (color == yellowcolor) {
-			// 		yellowCount = colorCode.count;
-			// 	}
-			// }
-			// Serial.println("Code Red:    " + (String)redCount_ + " Entry: " + (String)redCount);
-			// Serial.println("Code Blue:   " + (String)blueCount_ + " Entry: " + (String)blueCount);
-			// Serial.println("Code Green:  " + (String)greenCount_ + " Entry: " + (String)greenCount);
-			// Serial.println("Code Yellow: " + (String)yellowCount_ + " Entry: " + (String)yellowCount);
-			// return redCount_ == redCount && blueCount_ == blueCount && greenCount_ == greenCount && yellowCount_ && yellowCount;
 		}
 
 		void updateCount(Key k) {
@@ -422,7 +406,9 @@ class Unlocker{
 		}
 
 		void showWrongCode() {
-				for(uint16_t j=0; j<5; j++) {
+				tone(BUZZER, 100);
+
+				for(uint16_t j=0; j<4; j++) {
 					for(uint16_t i=0; i<strip_.numPixels(); i++) {
 						strip_.setPixelColor(i, redColor);
 					}
@@ -431,26 +417,9 @@ class Unlocker{
 				clearColors();
 				delay(400);
 			}
+				noTone(BUZZER);
 		}
-
-		// void showSuccessCode() {
-		// 		uint16_t i, j;
-
-		// 		while(unlocked_){ 
-		// 			for(i=0; i< strip_.numPixels(); i++) {
-		// 				strip_.setPixelColor(i, Wheel(strip_, ((i * 256 / strip.numPixels()) + j) & 255));
-		// 			}
-		// 			strip_.show();
-		// 			delay(20);
-		// 		}
-		// 	}
-
-		
-
-		void showRainbow() {
-
-		}
-
+			
 
 		boolean unlocked() {
 			return unlocked_;
@@ -469,26 +438,63 @@ class Unlocker{
 
 };
 
+
+
+class Hatch {
+
+public:
+	 Hatch(int servoPin){
+		servo_.attach(servoPin);
+		servo_.write(closeAngle_);
+	 }
+
+	void open(){
+		if(!open_) {
+			open_ = true; 
+			Serial.println("Open");
+			servo_.write(openAngle_);
+		}
+	}
+
+	void close() {
+		if(open_) {
+			open_ = false; 
+			Serial.println("Close");
+			servo_.write(closeAngle_);
+		}
+	}
+
+private:
+	 Servo servo_;
+	 int openAngle_ = 85;
+	 int closeAngle_ = 3;
+	 boolean open_ = false;
+};
+
 std::vector<ColorCode> colorCodes = {
-    {whitecolor, 16},
 	{redColor, 1},
     {greenColor, 2},
-    {blueColor, 2},
+    {blueColor, 3},
 	{yellowcolor, 3},
 	{whitecolor, 16}
 };
+
+
 CodeReveal codeReveal(strip, colorCodes, 3000, 10);
 RainbowCycle rainbowCycle(strip, 5);
 Eyes eyes;
 CoinEffects effects(5000, rainbowCycle, eyes, codeReveal);
 Unlocker unlocker(colorCodes, strip);
 ButtonBoard board = ButtonBoard(BUTTON_BOARD, [](Key k) -> void {  unlocker.updateCount(k);});
+Hatch hatch(SERVO);
 
 
-
-const unsigned long debounceDelay = 500;  // Adjust the debounce delay as needed
+const unsigned long debounceDelay = 50;  // Adjust the debounce delay as needed
 volatile unsigned long lastDebounceTime = 0;
 volatile bool motionDetected = false;  // Flag to indicate motion detection
+
+const unsigned long debounceDelay2 = 500;  // Adjust the debounce delay as needed
+volatile unsigned long lastDebounceTime2 = 0;
 
 
 void setup() 
@@ -500,11 +506,19 @@ void setup()
 	 pinMode(IR_SENSOR, INPUT); // IR 
 	 pinMode(LED_1, OUTPUT);
 	 pinMode(LED_2, OUTPUT);
+	 pinMode(BUZZER, OUTPUT);
+	 //lockServo.attach(SERVO);
+
   	Serial.println("strip begin");
  
   strip.begin();// Sets up the SPI
   strip.show();// Clears the strip, as by default the strip data is set to all LED's off.
   Serial.println("setup complete");
+
+
+  
+  //lockServo.write(3);
+  //hatch.close();
  // strip.setBrightness(8);
  
      //digitalWrite(LED_1, HIGH);   // turn the LED on (HIGH is the voltage level)
@@ -512,73 +526,43 @@ void setup()
 }
 
 
-
 void loop()
 { 
-//	Serial.println("loop");
-//     digitalWrite(LED_BUILTIN, HIGH);   // turn the LED on (HIGH is the voltage level)
-//   delay(1000);                       // wait for a second
-//    digitalWrite(LED_BUILTIN, LOW);    // turn the LED off by making the voltage LOW
-//   delay(100);   
-  //rainbowCycle(200);
-  
-  	//rainbowCycle.update();
-	// if(millis() - lastDebounceTime > debounceDelay) {
-	// 	if (motionDetected) {
-	// 		// Perform action when motion is detected
-	// 		digitalWrite(LED_BUILTIN, HIGH);  // Turn off the onboard LED
-	// 		Serial.println("Motion Detected!");  // Print "Motion Detected!" on the serial monitor window
-
-	// 		// Reset the flag and update the last debounce time
-	// 		motionDetected = false;
-	// 	} else {
-	// 		digitalWrite(LED_BUILTIN, LOW);  // Turn off the onboard LED
-
-	// 	}
-	// 		lastDebounceTime = millis();
-	// }
-	
 	board.update();
 	if(unlocker.unlocked()) {
+		hatch.open();
 		rainbowCycle.update();
 	} else {
-	effects.update();
-
-  int sensorStatus = digitalRead(IR_SENSOR); // Set the GPIO as Input
-  if (!motionDetected && sensorStatus == 0) // Check if the pin high or not
-  {
-    // if the pin is high turn off the onboard Led
-    digitalWrite(LED_BUILTIN, LOW); // LED LOW
-    //Serial.print((String)millis()); 
-	//Serial.println("Motion Detected!"); // print Motion Detected! on the serial monitor window
-	effects.start();
-	motionDetected = true;
-  }
-  else  if(motionDetected && millis() - lastDebounceTime > debounceDelay) { 
-    //else turn on the onboard LED
-    digitalWrite(LED_BUILTIN, HIGH); // LED High
-    //Serial.print((String)millis()); 
-	//Serial.println(" Motion Ended!"); 
-	lastDebounceTime = millis();
-	motionDetected = false;
-  }
+		hatch.close();
+		effects.update();
+		int sensorStatus = digitalRead(IR_SENSOR); // Set the GPIO as Input
+		if (!motionDetected && sensorStatus == 0) // Check if the pin high or not
+		{
+			// if the pin is high turn off the onboard Led
+			digitalWrite(LED_BUILTIN, LOW); // LED LOW
+			//Serial.print((String)millis()); 
+			//Serial.println("Motion Detected!"); // print Motion Detected! on the serial monitor window
+			effects.start();
+			motionDetected = true;
+		}
+		else  if(motionDetected && millis() - lastDebounceTime > debounceDelay) { 
+			//else turn on the onboard LED
+			digitalWrite(LED_BUILTIN, HIGH); // LED High
+			//Serial.print((String)millis()); 
+			//Serial.println(" Motion Ended!"); 
+			lastDebounceTime = millis();
+			motionDetected = false;
+		}
 	}
 
+// 	 if(millis() - lastDebounceTime2 > debounceDelay2) { 
+// //		servoAngle+=10;
+// 		int potValue = analogRead(PA2);
+// 		int servoAngle = (potValue/34);
+// 		Serial.println("Pot: " + (String)potValue + " Angle: " + (String)servoAngle);
+// 		lockServo.write(servoAngle);
+// 		lastDebounceTime2 = millis();
+//	 }
 
-  // colorWipe(strip.Color(0, 255, 0), 20); // Green
-  // colorWipe(strip.Color(255, 0, 0), 20); // Red
-  // colorWipe(strip.Color(0, 0, 255), 20); // Blue
-  //rainbow(10);
-   //rainbowCycle();
-  //theaterChase(strip.Color(255, 0, 0), 20); // Red
-  // theaterChase(strip.Color(0, 255, 0), 20); // Green
-  // theaterChase(strip.Color(0, 0, 255), 20); // Blue
-  // theaterChaseRainbow(10);
-  // whiteOverRainbow(20,75,5);  
-  // pulseWhite(5); 
-  // delay(250);
-  // fullWhite();
-  // delay(250);
-	//rainbowFade2White(3,3,1);
 }
 

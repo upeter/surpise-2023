@@ -49,12 +49,12 @@ typedef void (*CallbackFunction)(Key);
         Serial.println("LEFT (" + (String)Key_read + ")");
         callback_(left);
       }
-      else if (Key_read > 500 and Key_read < 700)
+      else if (Key_read > 500 and Key_read < 800)
       {
         Serial.println("DOWN (" + (String)Key_read + ")");
         callback_(down);
       }
-      else if (Key_read > 200 and Key_read < 400)
+      else if (Key_read > 200 and Key_read < 490)
       {
         Serial.println("UP (" + (String)Key_read + ")");
         callback_(up);
@@ -64,7 +64,7 @@ typedef void (*CallbackFunction)(Key);
         Serial.println("ENTER (" + (String)Key_read + ")");
         callback_(enter);
       }
-      else if (Key_read > 900 and Key_read < 1100)
+      else if (Key_read > 900 and Key_read < 1500)
       {
         Serial.println("RIGHT (" + (String)Key_read + ")");
         callback_(right);

@@ -85,6 +85,52 @@ private:
 };
 
 
+class SuccessSound {
+public:
+	SuccessSound(uint8_t wait):nbDelay_(wait){}
+
+
+	void update() {
+    if (nbDelay_.update()) {
+		if(!stopped_) {
+			if(isUp_) {
+			frequency_+= 200;
+			} else {
+				frequency_-= 200;
+			}
+			if(frequency_ >= 2000) {
+				isUp_ = false;
+			} else if(frequency_ <= 600) {
+				stopped_ = true;
+				isUp_ = true;
+			}
+			tone(BUZZER, frequency_);
+		} else {
+			noTone(BUZZER);
+		}
+
+		nbDelay_.restart();
+	}
+	}
+
+	void start() {
+		frequency_ = 500;
+		stopped_ = false;
+	}
+
+	void stop() {
+		if(!stopped_) {
+			noTone(BUZZER);
+		}
+	}
+
+private:
+ NonBlockingDelay nbDelay_;
+ int frequency_ = 600;
+ boolean isUp_ = true;
+ boolean stopped_ = false;
+};
+
 class CodeReveal {
 public:
   CodeReveal(WS2812B & strip,std::vector<ColorCode> & colorCodes, long colorPeriodMillis, uint8_t wait) : strip_(strip), colorCodes_(colorCodes), nbDelay_(wait), colorPeriodMillis_(colorPeriodMillis), colorStartedMillis_(0), fadeMax_(100.0), fadeVal_(0), loops_(256), loopCount_(0), loopCountUp_(true) {
@@ -315,7 +361,7 @@ private:
 class Unlocker{
 
 	public:
-  		Unlocker(std::vector<ColorCode> & colorCodes, WS2812B & strip):colorCodes_(colorCodes), strip_(strip), unlocked_(false) {
+  		Unlocker(std::vector<ColorCode> & colorCodes, WS2812B & strip):colorCodes_(colorCodes), strip_(strip), unlocked_(false), unlockedMillis_(0), unlockedPeriodMillis_(2000) {
 			initRequirdColorCode();
 			resetCounts();
 		}
@@ -376,16 +422,23 @@ class Unlocker{
 				clearColors();
 
 				//if it was unlocked, lock it
-				if(unlocked_) {
-					unlocked_ = false;
-					clearColors();
-				} else {
-					unlocked_ = checkUnlock();
-					Serial.println("Unlock is: " + (String)unlocked_);
-					if(!unlocked_) {
-						showWrongCode();
-					} 
-					resetCounts();
+				Serial.println("Unlock millis: " + (String)(millis() - unlockedMillis_));
+				if((millis() - unlockedMillis_) > unlockedPeriodMillis_) {
+					if(unlocked_) {
+						unlocked_ = false;
+						unlockedMillis_ = 0;
+						clearColors();
+					} else {
+						unlocked_ = checkUnlock();
+						Serial.println("Unlock is: " + (String)unlocked_);
+						if(unlocked_) {
+							unlockedMillis_ = millis();
+							Serial.println("Unlocked millis: " + (String)unlockedMillis_);
+						} else {
+							showWrongCode();
+						}
+						resetCounts();
+					}
 				}
 
 			}
@@ -434,6 +487,8 @@ class Unlocker{
 				int blueCount_;
 				int yellowCount_;
 				boolean unlocked_;
+				unsigned long unlockedMillis_;
+				unsigned long unlockedPeriodMillis_;
 
 
 };
@@ -466,7 +521,7 @@ public:
 
 private:
 	 Servo servo_;
-	 int openAngle_ = 85;
+	 int openAngle_ = 45;
 	 int closeAngle_ = 3;
 	 boolean open_ = false;
 };
@@ -487,15 +542,12 @@ CoinEffects effects(5000, rainbowCycle, eyes, codeReveal);
 Unlocker unlocker(colorCodes, strip);
 ButtonBoard board = ButtonBoard(BUTTON_BOARD, [](Key k) -> void {  unlocker.updateCount(k);});
 Hatch hatch(SERVO);
+SuccessSound successSound(100);
 
 
 const unsigned long debounceDelay = 50;  // Adjust the debounce delay as needed
 volatile unsigned long lastDebounceTime = 0;
 volatile bool motionDetected = false;  // Flag to indicate motion detection
-
-const unsigned long debounceDelay2 = 500;  // Adjust the debounce delay as needed
-volatile unsigned long lastDebounceTime2 = 0;
-
 
 void setup() 
 {
@@ -511,6 +563,7 @@ void setup()
 
   	Serial.println("strip begin");
  
+  strip.setBrightness(10);
   strip.begin();// Sets up the SPI
   strip.show();// Clears the strip, as by default the strip data is set to all LED's off.
   Serial.println("setup complete");
@@ -525,14 +578,21 @@ void setup()
     
 }
 
-
+bool hasUnlocked = false;
 void loop()
 { 
 	board.update();
 	if(unlocker.unlocked()) {
-		hatch.open();
+		 if (!hasUnlocked) {
+            successSound.start();
+			hatch.open();
+		 }
 		rainbowCycle.update();
+		successSound.update();
+		hasUnlocked = true;
 	} else {
+		hasUnlocked = false;
+		successSound.stop();
 		hatch.close();
 		effects.update();
 		int sensorStatus = digitalRead(IR_SENSOR); // Set the GPIO as Input

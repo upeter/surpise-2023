@@ -38,3 +38,12 @@ uint32_t Wheel(WS2812B & strip, byte WheelPos)
     }
   }
 }
+
+void clearColors(WS2812B &strip)
+{
+	for (uint16_t i = 0; i < strip.numPixels(); i++)
+	{
+		strip.setPixelColor(i, 0);
+	}
+	strip.show();
+}

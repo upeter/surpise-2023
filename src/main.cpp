@@ -419,21 +419,19 @@ class Unlocker{
 
 			if(k == enter) {
  				//clear all colors
-				clearColors();
+				clearColors(strip_);
 
-				//if it was unlocked, lock it
-				Serial.println("Unlock millis: " + (String)(millis() - unlockedMillis_));
+				//just onlocked: prevent any action
 				if((millis() - unlockedMillis_) > unlockedPeriodMillis_) {
+					//if it was unlocked, lock it
 					if(unlocked_) {
 						unlocked_ = false;
 						unlockedMillis_ = 0;
-						clearColors();
+						clearColors(strip_);
 					} else {
 						unlocked_ = checkUnlock();
-						Serial.println("Unlock is: " + (String)unlocked_);
 						if(unlocked_) {
 							unlockedMillis_ = millis();
-							Serial.println("Unlocked millis: " + (String)unlockedMillis_);
 						} else {
 							showWrongCode();
 						}
@@ -451,12 +449,6 @@ class Unlocker{
 				strip_.show();
 		}
 
-		void clearColors() {
-				for(uint16_t i=0; i<strip_.numPixels(); i++) {
-        			strip_.setPixelColor(i, 0);
-				}
-				strip_.show();
-		}
 
 		void showWrongCode() {
 				tone(BUZZER, 100);
@@ -467,7 +459,7 @@ class Unlocker{
 					}
 				strip_.show();
 				delay(400);
-				clearColors();
+				clearColors(strip_);
 				delay(400);
 			}
 				noTone(BUZZER);
@@ -521,7 +513,7 @@ public:
 
 private:
 	 Servo servo_;
-	 int openAngle_ = 45;
+	 int openAngle_ = 30;
 	 int closeAngle_ = 3;
 	 boolean open_ = false;
 };
@@ -554,28 +546,19 @@ void setup()
       Serial.begin(9600);
 	  delay(500);
 	
-	pinMode(LED_BUILTIN, OUTPUT);
+	 pinMode(LED_BUILTIN, OUTPUT);
 	 pinMode(IR_SENSOR, INPUT); // IR 
 	 pinMode(LED_1, OUTPUT);
 	 pinMode(LED_2, OUTPUT);
 	 pinMode(BUZZER, OUTPUT);
-	 //lockServo.attach(SERVO);
 
   	Serial.println("strip begin");
  
-  strip.setBrightness(10);
   strip.begin();// Sets up the SPI
+  strip.setBrightness(5);
+  clearColors(strip);
   strip.show();// Clears the strip, as by default the strip data is set to all LED's off.
-  Serial.println("setup complete");
-
-
-  
-  //lockServo.write(3);
-  //hatch.close();
- // strip.setBrightness(8);
- 
-     //digitalWrite(LED_1, HIGH);   // turn the LED on (HIGH is the voltage level)
-    
+  Serial.println("setup complete");    
 }
 
 bool hasUnlocked = false;
@@ -584,16 +567,20 @@ void loop()
 	board.update();
 	if(unlocker.unlocked()) {
 		 if (!hasUnlocked) {
-            successSound.start();
+            eyes.start();
+			successSound.start();
 			hatch.open();
 		 }
 		rainbowCycle.update();
 		successSound.update();
 		hasUnlocked = true;
 	} else {
+		if(hasUnlocked) {
+			eyes.stop();
+			successSound.stop();
+			hatch.close();
+		}
 		hasUnlocked = false;
-		successSound.stop();
-		hatch.close();
 		effects.update();
 		int sensorStatus = digitalRead(IR_SENSOR); // Set the GPIO as Input
 		if (!motionDetected && sensorStatus == 0) // Check if the pin high or not
